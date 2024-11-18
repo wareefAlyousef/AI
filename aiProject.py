@@ -101,64 +101,6 @@ def fitness(individual, user_preferences):
                      comfort_score * comfort_weight)
     return fitness_value
 
-
-def crossover_population(population):
-    """
-    Perform 2-point crossover across the entire population to create a new population.
-    
-    Args:
-    population (list): List of individual dictionaries containing outfit solutions.
-    
-    Returns:
-    list: New population created by applying crossover.
-    """
-    categories = ['top', 'bottom', 'shoes', 'neck', 'purse']
-    new_population = []
-
-    for i in range(0, len(population) - 1, 2):
-        parent1 = population[i]
-        parent2 = population[i + 1]
-
-        # Single crossover point
-        point = random.randint(1, len(categories) - 1)
-        offspring1 = {**parent1, **{cat: parent2[cat] for cat in categories[point:]}}
-        offspring2 = {**parent2, **{cat: parent1[cat] for cat in categories[point:]}}
-
-        new_population.extend([offspring1, offspring2])
-
-    if len(population) % 2 != 0:
-        new_population.append(population[-1])
-
-    return new_population
-
-def mutate(reserved_population, mutation_rate, inventory=None):
-    """
-    Mutate the reserved population and create a new mutated population.
-    
-    Args:
-    reserved_population (list): List of individual solutions (each a dictionary of categories).
-    mutation_rate (float): Probability of mutating a given category for an individual.
-    inventory (dict): Available items for each category.
-    
-    Returns:
-    list: New mutated population.
-    """
-    if inventory is None:
-        raise ValueError("Inventory must be provided for mutation.")
-
-    def mutate_individual(solution):
-        """Mutate a single solution."""
-        mutated = solution.copy()
-        for category in mutated:
-            if random.random() < mutation_rate:
-                mutated[category] = random.choice(inventory[category])
-        return mutated
-
-    # Apply mutation to each individual in the reserved population
-    new_population = [mutate_individual(individual) for individual in reserved_population]
-    
-    return new_population
-
 class Individual :
     def __init__(self, solution, fitness):
         self.solution = solution  # The outfit solution (e.g., the list of selected items)
@@ -192,57 +134,61 @@ def select_individuals(population, fitnesses):
     
     return individual1, individual2
 
+def crossover(population, fitnesses):
+    categories = ['top', 'bottom', 'shoes', 'neck', 'purse']
+    new_population = []
 
-def replacement(population, fitnesses, a, b, user_preferences):
-    """
-    Perform replacement in the population by integrating two new individuals.
-    
-    Args:
-    population (list): Current population of individuals.
-    fitnesses (list): Fitness values corresponding to the population.
-    a (Individual): First individual selected from the binary tournament.
-    b (Individual): Second individual selected from the binary tournament.
-    user_preferences (dict): Preferences for fitness calculation.
-    
-    Returns:
-    list: Updated population after replacement.
-    """
-    # Calculate fitness of new individuals
-    a_fitness = fitness(a.solution, user_preferences) 
-    b_fitness = fitness(b.solution, user_preferences)  
-    
-    # Find the two worst individuals in the population
-    worst_indices = sorted(range(len(fitnesses)), key=lambda i: fitnesses[i])[:2]
-    
-    # Replace worst individuals if the new ones are better
-    if a_fitness > fitnesses[worst_indices[0]]:
-        population[worst_indices[0]] = a.solution  
-        fitnesses[worst_indices[0]] = a_fitness
-    
-    if b_fitness > fitnesses[worst_indices[1]]:
-        population[worst_indices[1]] = b.solution  
-        fitnesses[worst_indices[1]] = b_fitness
-    
-    return population
+    for i in range(len(population) // 2):
+        parent1, parent2 = select_individuals(population, fitnesses)
 
-def print_individual(individual , individual_num):
-    """
-    Print the details of a individual solution (outfit) in a formatted way.
+        # Two crossover points
+        point1, point2 = sorted(random.sample(range(len(categories)), 2))
+        
+        # Create offspring using segments from both parents
+        offspring1 = {}
+        offspring2 = {}
+        
+        # First segment (before point1)
+        for cat in categories[:point1]:
+            offspring1[cat] = parent1.solution[cat]
+            offspring2[cat] = parent2.solution[cat]
+            
+        # Middle segment (between point1 and point2)
+        for cat in categories[point1:point2]:
+            offspring1[cat] = parent2.solution[cat]
+            offspring2[cat] = parent1.solution[cat]
+            
+        # Last segment (after point2)
+        for cat in categories[point2:]:
+            offspring1[cat] = parent1.solution[cat]
+            offspring2[cat] = parent2.solution[cat]
+
+        new_population.extend([offspring1, offspring2])
+
+    if len(population) % 2 != 0:
+        new_population.append(population[-1])
+
+    return new_population
+
+def mutate(reserved_population, mutation_rate, inventory=None):
+
+    if inventory is None:
+        raise ValueError("Inventory must be provided for mutation.")
+
+    def mutate_individual(solution):
+        """Mutate a single solution."""
+        mutated = solution.copy()
+        for category in mutated:
+            if random.random() < mutation_rate:
+                mutated[category] = random.choice(inventory[category])
+        return mutated
+
+    # Apply mutation to each individual in the reserved population
+    new_population = [mutate_individual(individual) for individual in reserved_population]
     
-    Args:
-    individual (object): The individual object containing the outfit (solution) and fitness.
-    individual_num (int): The individual number to be printed (e.g., individual1, individual2).
-    """
-    print(f"Individual {individual_num}:")
-    
-    # Iterate through each category (top, bottom, etc.) in the individual solution
-    for category, item in individual.solution.items():
-        print(f"  {category}: {item['name']} - price: {item['price']} - dress_code: {item['dress_code']} - "
-              f"color: {item['color']} - comfort_level: {item['comfort_level']}")
-    
-    # Print the fitness level
-    print(f"  Fitness level: {individual.fitness:.4f}")  # Printing fitness up to 4 decimal places for clarity
-    print()  # Newline for formatting
+    return new_population
+
+
 
 def get_user_preferences():
     #Prompt the user to enter their preferences and return them as a dictionary.
@@ -311,169 +257,136 @@ mean_fitness_history = []
 
 
 population_size = 10 
-generations = 20  
+Runs= 20
+generations = 2000 
 
-# Create initial population
-population = create_initial_population(population_size)
-
-#Calculate fitness for each individual
-fitnesses = [fitness(ind, user_preferences) for ind in population]
-
-# Track the mean fitness for the generation
-mean_fitness = sum(fitnesses) / len(fitnesses)
-mean_fitness_history.append(mean_fitness)
-
-# Print the initial population with their fitness values
-print("Initial Population and Fitness:")
-for i, individual in enumerate(population, start=1):
-    fit_val = fitness(individual, user_preferences)
-    print(f"Individual {i}:")
-    for category, item in individual.items():
-        print(f"  {category}: {item['name']} - price: {item['price']} - dress_code: {item['dress_code']} - "
-              f"color: {item['color']} - comfort_level: {item['comfort_level']}")
-    print(f"  Fitness: {fit_val:.4f}\n")
-
-# Track best fitness for plotting
-fitness_history = []
-best_initial = max(fitnesses)
-fitness_history.append(best_initial)
-
-print(f"Initial generation created with {population_size} individuals")
-print(f"Best initial fitness: {best_initial:.4f}")
 
 # Parameters for termination
-stagnation_threshold = 5  # Number of generations without improvement
-diversity_threshold = 0.05  # Minimum diversity required
-min_error_threshold = 1e-1  # Minimum error for termination
-fitness_variance_threshold = 1e-3  # Minimum fitness variance for convergence
-trend_window = 5  # Number of generations to calculate moving average trends
-max_generations = generations  # Already defined maximum generations
+min_error_threshold = 1e-2  # Minimum error for termination
+fitness_variance_threshold = 1e-5  # Minimum fitness variance for convergence
 
 
 # Initialize additional variables
 global_best_fitness = 0  # Best fitness found across all generations
 worsening_counter = 0  # Counter for consecutive worsening generations
-fitness_history = []  # Track fitness history to calculate moving averages
 
-def calculate_diversity(population):
-    unique_individuals = set(str(ind) for ind in population)
-    return len(unique_individuals) / len(population)
 
+# Initialize storage for best fitness values across runs
+best_fitness_values = []
 
 # Main Genetic Algorithm loop
-for generation in range(generations):
+for run in range(1,Runs+1):
+    print(f"\n\033[94mRun Number:\033[0m: {run}")
+    # Create initial population
+    population = create_initial_population(population_size)
     # Calculate fitness for each individual
     fitnesses = [fitness(ind, user_preferences) for ind in population]
 
-    # Create new population
-    new_population = []
-
-    # Step 1: Perform 2-point crossover
-    new_population = crossover_population(population)
-
-    # Step 2: Mutate the new population
-    mutation_rate = max(0.2 - (generation / generations * 0.1), 0.05)  # Decay mutation rate over generations
-    new_population = mutate(new_population, mutation_rate, inventory=inventory)
-
-    # Calculate fitness for each individual in new_population
-    fitnesses = [fitness(ind, user_preferences) for ind in new_population]
-
-    # Step 3: Select two individuals using binary tournament selection
-    a, b = select_individuals(new_population, fitnesses)
-
-    # Step 4: Perform replacement
-    population = replacement(new_population, fitnesses, a, b, user_preferences)
-
-    # Update the population for the next generation
-    population = population[:population_size]
+    best_fitness_generation = 0
+    mean_fitness_history = [] 
 
     # Track the mean fitness for the generation
     mean_fitness = sum(fitnesses) / len(fitnesses)
     mean_fitness_history.append(mean_fitness)
-    fitness_variance = sum((f - mean_fitness) ** 2 for f in fitnesses) / len(fitnesses)
 
-    # Update global best fitness
-    current_best_fitness = max(fitnesses)
-    if current_best_fitness > global_best_fitness:
-        global_best_fitness = current_best_fitness
+    # Track best fitness for plotting
+    fitness_history = []
+    best_initial = max(fitnesses)
+    fitness_history.append(best_initial)
 
-    # Track fitness trends using moving averages
-    if len(fitness_history) >= trend_window:
-        current_trend_avg = sum(fitness_history[-trend_window:]) / trend_window
-        previous_trend_avg = sum(fitness_history[-2 * trend_window:-trend_window]) / trend_window
-        fitness_trend_decreasing = current_trend_avg < previous_trend_avg
-    else:
-        fitness_trend_decreasing = False
+    print(f"\033[94mBest initial fitness\033[0m: {best_initial:.4f}")
 
-    # Track the best fitness in this generation
-    current_best_fitness = max(fitnesses)
-    error = abs(optimal_solution - current_best_fitness)
+    # Create new population
+    new_population = []
 
+    for generation in range(1, generations+1):
+        # Perform 2-point crossover
+        new_population = crossover(population,fitnesses)
 
-    # Update best fitness and stagnation tracker
-    if current_best_fitness > best_fitness:
-        best_fitness = current_best_fitness
-        best_fitness_generation = generation  # Reset stagnation counter
-         
+        # Mutate the new population
+        mutation_rate = max(0.2 - (generation / generations * 0.1), 0.05)  # Decay mutation rate over generations
+        new_population = mutate(new_population, mutation_rate, inventory=inventory)
 
-    # Check termination conditions
-    if error < min_error_threshold:
-        print(f"Terminated due to reaching minimum error at generation {generation}")
-        break
+        # Calculate fitness for each individual in new_population
+        fitnesses = [fitness(ind, user_preferences) for ind in new_population]
 
-    population_diversity = calculate_diversity(population)
-    if population_diversity < diversity_threshold:
-        print(f"Terminated due to low diversity at generation {generation}")
-        break
+        # Update the population for the next generation
+        population = new_population[:population_size]
 
-    if fitness_variance < fitness_variance_threshold:
-        print(f"Terminated due to fitness convergence at generation {generation}")
-        break
+        # Track the mean fitness for the generation
+        mean_fitness = sum(fitnesses) / len(fitnesses)
+        mean_fitness_history.append(mean_fitness)
+        fitness_variance = sum((f - mean_fitness) ** 2 for f in fitnesses) / len(fitnesses)
 
-    if fitness_trend_decreasing:
-        print(f"Terminated due to decreasing fitness trend over the last {trend_window} generations at generation {generation}")
-        break
+        # Update global best fitness
+        current_best_fitness = max(fitnesses)
+        if current_best_fitness > global_best_fitness:
+            global_best_fitness = current_best_fitness
 
-    if generation >= max_generations:
-        print(f"Terminated due to reaching the maximum number of generations: {max_generations}")
-        break
-    
-    #if generation - best_fitness_generation >= stagnation_threshold:
-        #print(f"Terminated due to stagnation at generation {generation}")
-        #break
+        # Track the best fitness in this generation
+        current_best_fitness = max(fitnesses)
+        error = abs(optimal_solution - current_best_fitness)
+   
 
-    
+        # Check termination conditions
+        if error < min_error_threshold:
+            print(f"Terminated due to reaching minimum error at generation {generation}")
+            break
 
+        if fitness_variance < fitness_variance_threshold:
+            print(f"Terminated due to fitness convergence at generation {generation}")
+            break
 
-def print_perfect_fit(best_outfit, best_fitness):
-    """Print the final outfit selection with styling and fitness value."""
-    print("\nYour outfit selection \033[94mis\033[0m ready! Here's your personalized outfit plan (Note: This \033[94mis\033[0m based on your preferences)\n")
-    
-    # Print each item with color coding
-    for category, item in best_outfit.items():
-        print(f"\033[91m{category.capitalize()}:\033[0m {item['name']} - price: {item['price']} - dress_code: {item['dress_code']} - "
-              f"color: {item['color']} - comfort_level: {item['comfort_level']}")
-    
-    print(f"\n\033[94mOverall Fitness:\033[0m {best_fitness:.4f}")
-    print("Hope you feel fabulous \033[94min\033[0m your outfit!")
+        if generation == generations:
+            print(f"Terminated due to reaching the maximum number of generations: {generation}")
+            break
 
-# Get the best outfit and its fitness
-best_outfit = max(population, key=lambda x: fitness(x, user_preferences))
-best_fitness = fitness(best_outfit, user_preferences)
+    def print_perfect_fit(best_outfit, best_fitness):
+        """Print the final outfit selection with styling and fitness value."""
+        print("\nYour outfit selection is ready! Here's your personalized outfit plan\n")
+        
+        # Print each item with color coding
+        for category, item in best_outfit.items():
+            print(f"\033[91m{category.capitalize()}:\033[0m {item['name']} - price: {item['price']} - dress_code: {item['dress_code']} - "
+                f"color: {item['color']} - comfort_level: {item['comfort_level']}")
+        
+        print(f"\n\033[94mOverall Fitness:\033[0m {best_fitness:.4f}")
+        print("Hope you feel \033[94mfabulous\033[0m in your outfit!")
 
-# Print the perfect fit
-print_perfect_fit(best_outfit, best_fitness)
+    # Get the best outfit and its fitness
+    best_outfit = max(population, key=lambda x: fitness(x, user_preferences))
+    best_fitness = fitness(best_outfit, user_preferences)
 
+    # Append the best fitness of this run to the list
+    best_fitness_values.append(best_fitness)
 
-#Result
-import matplotlib.pyplot as plt
+    # Print the perfect fit
+    print_perfect_fit(best_outfit, best_fitness)
 
-# Plot mean fitness across generations
-plt.figure(figsize=(10, 6))
-plt.plot(range(len(mean_fitness_history)), mean_fitness_history, marker='o', linestyle='-', label='Mean Fitness')
-plt.title('GA Performance')
-plt.xlabel('Generation')
-plt.ylabel('Mean Fitness')
-plt.legend()
-plt.grid(True)
-plt.show()
+    #Result
+    import matplotlib.pyplot as plt
+
+    window_size = 100  
+
+    import numpy as np
+    # Apply a moving average for smoothing
+    smoothed_mean_fitness = np.convolve(mean_fitness_history, np.ones(window_size) / window_size, mode='valid')
+
+    # Adjust generations to match the smoothed fitness array
+    smoothed_generations = range(len(smoothed_mean_fitness))
+
+    # Plot the smoothed data
+    plt.figure(figsize=(10, 6))
+    plt.plot(smoothed_generations, smoothed_mean_fitness, label='Mean Fitness')
+    plt.title('GA Performance', fontsize=16)
+    plt.xlabel('Generation', fontsize=12)
+    plt.ylabel('Mean Fitness', fontsize=12)
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+# Calculate the mean of the best fitness across all runs
+mean_best_fitness = sum(best_fitness_values) / len(best_fitness_values)
+
+# Print the result
+print(f"\033[94mMean Best Fitness across 20 runs:\033[0m {mean_best_fitness:.4f}")
