@@ -1,4 +1,6 @@
 import random
+import numpy as np
+import matplotlib.pyplot as plt
 
 # Define the search space based on the provided table
 inventory = {
@@ -253,37 +255,35 @@ best_fitness = 0
 best_fitness_generation = 0
 error = float('inf')
 optimal_solution = 1.0
-mean_fitness_history = [] 
 
 
-population_size = 10 
-Runs= 20
-generations = 2000 
+population_size = 10
+Runs = 20
+generations = 2000
 
 
 # Parameters for termination
 min_error_threshold = 1e-2  # Minimum error for termination
 fitness_variance_threshold = 1e-5  # Minimum fitness variance for convergence
 
-
-# Initialize additional variables
+# Initialize storage for results
 global_best_fitness = 0  # Best fitness found across all generations
-worsening_counter = 0  # Counter for consecutive worsening generations
-
-
-# Initialize storage for best fitness values across runs
-best_fitness_values = []
+best_fitness_values = []  # Best fitness per run
+all_mean_fitness_histories = []  # Store mean fitness history for all runs
 
 # Main Genetic Algorithm loop
-for run in range(1,Runs+1):
-    print(f"\n\033[94mRun Number:\033[0m: {run}")
+for run in range(1, Runs + 1):
+    print(f"\n\033[94mRun Number:\033[0m {run}")
     # Create initial population
     population = create_initial_population(population_size)
     # Calculate fitness for each individual
     fitnesses = [fitness(ind, user_preferences) for ind in population]
 
+    # Initialize tracking variables for this run
     best_fitness_generation = 0
-    mean_fitness_history = [] 
+    mean_fitness_history = []
+
+    best_initial = max(fitnesses)
 
     # Track the mean fitness for the generation
     mean_fitness = sum(fitnesses) / len(fitnesses)
@@ -294,29 +294,26 @@ for run in range(1,Runs+1):
     best_initial = max(fitnesses)
     fitness_history.append(best_initial)
 
-    print(f"\033[94mBest initial fitness\033[0m: {best_initial:.4f}")
+    print(f"\033[94mBest initial fitness:\033[0m {best_initial:.4f}")
 
-    # Create new population
-    new_population = []
+    # Genetic Algorithm process
+    for generation in range(1, generations + 1):
+        # Perform crossover
+        new_population = crossover(population, fitnesses)
 
-    for generation in range(1, generations+1):
-        # Perform 2-point crossover
-        new_population = crossover(population,fitnesses)
-
-        # Mutate the new population
-        mutation_rate = max(0.2 - (generation / generations * 0.1), 0.05)  # Decay mutation rate over generations
+        # Perform mutation
+        mutation_rate = max(0.2 - (generation / generations * 0.1), 0.05) # Decay mutation rate over generations
         new_population = mutate(new_population, mutation_rate, inventory=inventory)
 
-        # Calculate fitness for each individual in new_population
+        # Calculate fitness for the new population
         fitnesses = [fitness(ind, user_preferences) for ind in new_population]
 
-        # Update the population for the next generation
+        # Update population for next generation
         population = new_population[:population_size]
 
-        # Track the mean fitness for the generation
+        # Track mean fitness for this generation
         mean_fitness = sum(fitnesses) / len(fitnesses)
         mean_fitness_history.append(mean_fitness)
-        fitness_variance = sum((f - mean_fitness) ** 2 for f in fitnesses) / len(fitnesses)
 
         # Update global best fitness
         current_best_fitness = max(fitnesses)
@@ -325,18 +322,17 @@ for run in range(1,Runs+1):
 
         # Track the best fitness in this generation
         current_best_fitness = max(fitnesses)
-        error = abs(optimal_solution - current_best_fitness)
-   
 
-        # Check termination conditions
+
+        error = abs(optimal_solution - current_best_fitness)
+        fitness_variance = sum((f - mean_fitness) ** 2 for f in fitnesses) / len(fitnesses)
+
         if error < min_error_threshold:
             print(f"Terminated due to reaching minimum error at generation {generation}")
             break
-
         if fitness_variance < fitness_variance_threshold:
             print(f"Terminated due to fitness convergence at generation {generation}")
             break
-
         if generation == generations:
             print(f"Terminated due to reaching the maximum number of generations: {generation}")
             break
@@ -363,30 +359,49 @@ for run in range(1,Runs+1):
     # Print the perfect fit
     print_perfect_fit(best_outfit, best_fitness)
 
-    #Result
-    import matplotlib.pyplot as plt
 
-    window_size = 100  
+    # Store results for this run
+    all_mean_fitness_histories.append(mean_fitness_history)
 
-    import numpy as np
-    # Apply a moving average for smoothing
-    smoothed_mean_fitness = np.convolve(mean_fitness_history, np.ones(window_size) / window_size, mode='valid')
-
-    # Adjust generations to match the smoothed fitness array
+    # Plot the mean fitness history for this run
+    smoothed_mean_fitness = np.convolve(mean_fitness_history, np.ones(100) / 100, mode='valid')
     smoothed_generations = range(len(smoothed_mean_fitness))
 
-    # Plot the smoothed data
     plt.figure(figsize=(10, 6))
-    plt.plot(smoothed_generations, smoothed_mean_fitness, label='Mean Fitness')
-    plt.title('GA Performance', fontsize=16)
+    plt.plot(smoothed_generations, smoothed_mean_fitness, label=f'Run {run} Mean Fitness')
+    plt.title(f'GA Performance - Run {run}', fontsize=16)
     plt.xlabel('Generation', fontsize=12)
     plt.ylabel('Mean Fitness', fontsize=12)
     plt.legend()
     plt.grid(True)
     plt.show()
 
-# Calculate the mean of the best fitness across all runs
-mean_best_fitness = sum(best_fitness_values) / len(best_fitness_values)
+# Normalize the lengths of fitness histories
+max_generations = max(len(history) for history in all_mean_fitness_histories)
 
-# Print the result
-print(f"\033[94mMean Best Fitness across 20 runs:\033[0m {mean_best_fitness:.4f}")
+# Pad each fitness history with NaN to make them the same length
+padded_histories = [
+    np.pad(history, (0, max_generations - len(history)), constant_values=np.nan)
+    for history in all_mean_fitness_histories
+]
+
+# Calculate the mean performance across runs, ignoring NaN values
+mean_performance = np.nanmean(np.array(padded_histories), axis=0)
+
+# Smooth the mean performance
+smoothed_mean_performance = np.convolve(mean_performance, np.ones(100) / 100, mode='valid')
+smoothed_generations = range(len(smoothed_mean_performance))
+
+# Plot the smoothed mean performance across all runs
+plt.figure(figsize=(10, 6))
+plt.plot(smoothed_generations, smoothed_mean_performance, label='Mean Performance Across Runs')
+plt.title('Mean GA Performance Across Runs', fontsize=16)
+plt.xlabel('Generation', fontsize=12)
+plt.ylabel('Mean Fitness', fontsize=12)
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# Calculate and display the mean best fitness across all runs
+mean_best_fitness = np.mean(best_fitness_values)
+print(f"\n\n\033[94mMean Best Fitness across {Runs} runs:\033[0m {mean_best_fitness:.4f}")
